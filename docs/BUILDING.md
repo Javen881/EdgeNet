@@ -1,5 +1,8 @@
 # EdgeNet 构建与发布过程记录
 
+> 当前机器的无 sudo 工具链、统一静态依赖和 GUI 编译步骤见 [LOCAL_BUILD.md](LOCAL_BUILD.md)。
+> 下文保留历史过程；当前 Bridge 已移除对 OpenVPN3 动态 triplet include 目录的依赖。
+
 > 适用范围：从全新 Ubuntu 开发机拉取 EdgeNet 源码，构建 Linux 开发版或 Windows x64 发布版。
 >
 > 当前状态：Windows x64 是已走通的主交付目标；Ubuntu 原生构建仅适用于当前 CLI/开发验证，尚不等同于完整 Linux VPN 客户端。

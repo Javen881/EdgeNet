@@ -41,11 +41,17 @@ fn main() {
     // OpenSSL
     println!("cargo:rustc-link-lib=static=ssl");
     println!("cargo:rustc-link-lib=static=crypto");
+    // CMake's PRIVATE dependencies of the bridge archive are not propagated
+    // to the Rust linker, so list its static dependencies explicitly.
+    println!("cargo:rustc-link-lib=static=fmt");
+    println!("cargo:rustc-link-lib=static=lz4");
+    println!("cargo:rustc-link-lib=static=jsoncpp");
 
     // MinGW C++ runtime
     println!("cargo:rustc-link-lib=static=stdc++");
     println!("cargo:rustc-link-lib=static=gcc");
     println!("cargo:rustc-link-lib=static=gcc_eh");
+    println!("cargo:rustc-link-lib=static=winpthread");
 
     // Windows system libraries
     println!("cargo:rustc-link-lib=setupapi");
@@ -56,6 +62,13 @@ fn main() {
     println!("cargo:rustc-link-lib=advapi32");
     println!("cargo:rustc-link-lib=crypt32");
     println!("cargo:rustc-link-lib=bcrypt");
+    println!("cargo:rustc-link-lib=wininet");
+    println!("cargo:rustc-link-lib=rpcrt4");
+    println!("cargo:rustc-link-lib=wtsapi32");
+    println!("cargo:rustc-link-lib=ncrypt");
+    println!("cargo:rustc-link-lib=fwpuclnt");
+    println!("cargo:rustc-link-lib=ole32");
+    println!("cargo:rustc-link-lib=shell32");
 
     // =========================================================
     // Embed complete TAP driver directory into EdgeNet.exe
@@ -135,6 +148,5 @@ fn main() {
     println!(
         "cargo:rerun-if-changed=native/bridge/tap_manager.hpp"
     );
+    println!("cargo:rerun-if-changed=native/bridge/build-static/libedgenet_vpn.a");
 }
-
-

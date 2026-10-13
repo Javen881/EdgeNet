@@ -331,6 +331,8 @@ std::string tap_error;
 
 if (!edgenet::ensure_tap_adapter(tap_error))
 {
+    set_last_error("TAP initialization failed: " + tap_error);
+    g_state.store(EDGENET_VPN_ERROR);
     std::fprintf(
         stderr,
         "[EdgeNet] TAP initialization failed: %s\n",

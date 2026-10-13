@@ -39,6 +39,9 @@ enum GuiEvent {
 struct EdgeNetApp {
     server: String,
     port: String,
+    transport: vpn::Transport,
+    external_certificates: bool,
+    certificate_files: vpn::CertificateFiles,
 
     public_ip: String,
     public_ip_loading: bool,
@@ -67,6 +70,9 @@ impl EdgeNetApp {
         let mut app = Self {
             server: vpn::DEFAULT_SERVER.to_string(),
             port: vpn::DEFAULT_PORT.to_string(),
+            transport: vpn::Transport::default(),
+            external_certificates: false,
+            certificate_files: vpn::CertificateFiles::default(),
 
             public_ip: "Detecting...".to_string(),
             public_ip_loading: false,
@@ -132,7 +138,9 @@ impl EdgeNetApp {
             }
         };
 
-        let config = match vpn::build_profile(&server, port) {
+        let config = match vpn::build_profile_with_assets(
+            &server, port, self.transport, &self.certificate_files, self.external_certificates,
+        ) {
             Ok(config) => config,
             Err(error) => {
                 self.last_error = error;
@@ -150,13 +158,17 @@ impl EdgeNetApp {
         let tx = self.tx.clone();
 
         thread::spawn(move || {
-        let result = (|| -> Result<(), String> {
-        tap_driver::ensure_tap_installed()?;
-        native_vpn::connect(&config)?;
-        Ok(())
+            let result = (|| -> Result<(), String> {
+                tap_driver::ensure_tap_installed()?;
+                native_vpn::connect(&config)?;
+                Ok(())
             })();
-
-            });
+            let event = match result {
+                Ok(()) => GuiEvent::ConnectStarted,
+                Err(error) => GuiEvent::ConnectFailed(error),
+            };
+            let _ = tx.send(event);
+        });
     }
 
     fn disconnect_vpn(&mut self) {
@@ -354,6 +366,36 @@ impl EdgeNetApp {
                         .hint_text("Port"),
                 );
             });
+            ui.add_enabled_ui(!active, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Transport");
+                    ui.selectable_value(&mut self.transport, vpn::Transport::Tcp, "TCP");
+                    ui.selectable_value(&mut self.transport, vpn::Transport::Udp, "UDP");
+                });
+            });
+            if self.transport == vpn::Transport::Udp {
+                ui.label("UDP requires a matching UDP port on the VPN server.");
+            }
+        });
+    }
+
+    fn render_certificates(&mut self, ui: &mut egui::Ui) {
+        let active = self.connection_active();
+        compact_card().show(ui, |ui| {
+            ui.label(egui::RichText::new("Certificates").size(12.0).strong().color(MUTED));
+            ui.add_enabled_ui(!active, |ui| {
+                ui.horizontal(|ui| {
+                    ui.selectable_value(&mut self.external_certificates, false, "Built-in (default)");
+                    ui.selectable_value(&mut self.external_certificates, true, "External files");
+                });
+                if self.external_certificates {
+                    certificate_file_row(ui, "CA certificate", &mut self.certificate_files.ca, &mut self.last_error);
+                    certificate_file_row(ui, "Client certificate", &mut self.certificate_files.cert, &mut self.last_error);
+                    certificate_file_row(ui, "Client private key", &mut self.certificate_files.key, &mut self.last_error);
+                    certificate_file_row(ui, "TLS auth key (ta.key)", &mut self.certificate_files.ta, &mut self.last_error);
+                    ui.label("PEM files; unencrypted private key. TLS-auth direction: 1.");
+                }
+            });
         });
     }
 
@@ -489,6 +531,7 @@ impl eframe::App for EdgeNetApp {
             .frame(egui::Frame::default().fill(BG).inner_margin(egui::Margin::same(14)))
             .show(ui, |ui| {
                 ui.set_max_width(360.0);
+                egui::ScrollArea::vertical().show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.set_width(360.0);
                     self.render_header(ui);
@@ -496,6 +539,8 @@ impl eframe::App for EdgeNetApp {
                     self.render_public_ip(ui);
                     ui.add_space(8.0);
                     self.render_server(ui);
+                    ui.add_space(8.0);
+                    self.render_certificates(ui);
                     ui.add_space(8.0);
                     self.render_action(ui);
                     ui.add_space(8.0);
@@ -510,6 +555,7 @@ impl eframe::App for EdgeNetApp {
                             ui.label(egui::RichText::new("OpenVPN3 Core").size(10.0).color(MUTED));
                         });
                     });
+                });
                 });
             });
     }
@@ -677,4 +723,50 @@ fn main() -> eframe::Result {
         options,
         Box::new(|cc| Ok(Box::new(EdgeNetApp::new(cc)))),
     )
+}
+
+fn certificate_file_row(ui: &mut egui::Ui, label: &str, path: &mut String, error: &mut String) {
+    ui.label(label);
+    ui.horizontal(|ui| {
+        ui.add(egui::TextEdit::singleline(path).desired_width(245.0).hint_text("Select a file or paste its path"));
+        if ui.button("Browse").clicked() {
+            match pick_certificate_file() {
+                Ok(Some(selected)) => *path = selected,
+                Ok(None) => {},
+                Err(message) => *error = message,
+            }
+        }
+    });
+}
+
+#[cfg(windows)]
+fn pick_certificate_file() -> Result<Option<String>, String> {
+    use windows_sys::Win32::UI::Controls::Dialogs::{
+        CommDlgExtendedError, GetOpenFileNameW, OPENFILENAMEW,
+        OFN_EXPLORER, OFN_FILEMUSTEXIST, OFN_NOCHANGEDIR, OFN_PATHMUSTEXIST,
+    };
+    let mut buffer = vec![0u16; 32768];
+    let filter: Vec<u16> = "Certificates and keys\0*.crt;*.pem;*.key;*.cer\0All files\0*.*\0\0".encode_utf16().collect();
+    let mut dialog = OPENFILENAMEW {
+        lStructSize: std::mem::size_of::<OPENFILENAMEW>() as u32,
+        lpstrFile: buffer.as_mut_ptr(),
+        nMaxFile: buffer.len() as u32,
+        lpstrFilter: filter.as_ptr(),
+        nFilterIndex: 1,
+        Flags: OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR,
+        ..Default::default()
+    };
+    // Buffers live across this synchronous native dialog call.
+    if unsafe { GetOpenFileNameW(&mut dialog) } != 0 {
+        let length = buffer.iter().position(|c| *c == 0).unwrap_or(buffer.len());
+        return String::from_utf16(&buffer[..length])
+            .map(Some).map_err(|_| "Unsupported filename encoding".to_string());
+    }
+    let code = unsafe { CommDlgExtendedError() };
+    if code == 0 { Ok(None) } else { Err(format!("File picker failed: {code}")) }
+}
+
+#[cfg(not(windows))]
+fn pick_certificate_file() -> Result<Option<String>, String> {
+    Err("Please enter the file path manually on this platform".to_string())
 }

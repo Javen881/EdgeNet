@@ -8,4 +8,4 @@ clap = { version = "4.6.6", features = ["derive"] }
 reqwest = { version = "0.13.5", default-features = false, features = ["blocking", "rustls"] }
 eframe = { version = "0.36.2", default-features = false, features = [ "glow","default_fonts",] }
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Foundation","Win32_NetworkManagement_Ndis"] }
+windows-sys = { version = "0.61.2", features = ["Win32_NetworkManagement_IpHelper", "Win32_Networking_WinSock", "Win32_Foundation","Win32_NetworkManagement_Ndis", "Win32_UI_Controls_Dialogs"] }

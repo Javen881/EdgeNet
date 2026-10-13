@@ -30,6 +30,7 @@ find_package(asio CONFIG REQUIRED)
 find_package(fmt CONFIG REQUIRED)
 find_package(lz4 CONFIG REQUIRED)
 find_package(jsoncpp CONFIG REQUIRED)
+find_path(TAP_WINDOWS_INCLUDE_DIR tap-windows.h REQUIRED)
 
 add_library(
     edgenet_vpn
@@ -49,8 +50,7 @@ target_include_directories(
 
     PRIVATE
         "${OPENVPN3_DIR}"
-        "${OPENVPN3_DIR}/deps/tap-windows6/src"
-	"${OPENVPN3_DIR}/build/mingw/x64/vcpkg_installed/x64-mingw-dynamic/include"
+        "${TAP_WINDOWS_INCLUDE_DIR}"
 )
 
 target_compile_definitions(
@@ -91,6 +91,8 @@ target_link_libraries(
         wtsapi32
         ncrypt
         fwpuclnt
+        ole32
+        shell32
 )
 
 if(MINGW)
